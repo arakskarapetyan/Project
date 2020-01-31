@@ -1,0 +1,755 @@
+---
+title: "Bank Marketing Project"
+author: "Arpine Aghababyan, Araks Karapetyan, Lilit Ghandilyan, Naira Minasyan, Vanesa Grigoryan"
+date: '3 Dec, 2018'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+## R Markdown
+
+Reading the dataset bank-full.csv into R and making appropriate corrections 
+
+```{r}
+Bank_Marketing <- read.csv("bank-full.csv")
+str(Bank_Marketing)
+summary(Bank_Marketing)
+```
+
+
+```{r}
+colnames(Bank_Marketing)[17] <- "subscription"
+
+levels(Bank_Marketing$job)
+levels(Bank_Marketing$job)[levels(Bank_Marketing$job) == "admin." | levels(Bank_Marketing$job) == "entrepreneur" |
+                             levels(Bank_Marketing$job) == "management"] <- "business"
+
+levels(Bank_Marketing$job)[levels(Bank_Marketing$job) == "blue-collar" | 
+                             levels(Bank_Marketing$job) == "housemaid"] <- "maid_collar"
+
+levels(Bank_Marketing$job)[levels(Bank_Marketing$job) == "unknown"] <-  NA
+
+levels(Bank_Marketing$education)[levels(Bank_Marketing$education) == "unknown"] <- NA
+levels(Bank_Marketing$contact)[levels(Bank_Marketing$contact) == "unknown"] <- NA
+
+levels(Bank_Marketing$month)
+levels(Bank_Marketing$month)[levels(Bank_Marketing$month) == "mar" | levels(Bank_Marketing$month) == "apr" |
+                             levels(Bank_Marketing$month) == "may"] <- "spring_months"
+
+levels(Bank_Marketing$month)[levels(Bank_Marketing$month) == "jun" | levels(Bank_Marketing$month) == "jul" |
+                               levels(Bank_Marketing$month) == "aug"] <- "summer_months"
+
+levels(Bank_Marketing$month)[levels(Bank_Marketing$month) == "sep" | levels(Bank_Marketing$month) == "oct" |
+                               levels(Bank_Marketing$month) == "nov"] <- "autumn_months"
+
+levels(Bank_Marketing$month)[levels(Bank_Marketing$month) == "dec" | levels(Bank_Marketing$month) == "jan" |
+                               levels(Bank_Marketing$month) == "feb"] <- "winter_months"
+
+levels(Bank_Marketing$poutcome)[levels(Bank_Marketing$poutcome) == "unknown"] <- NA
+
+Bank_Marketing <- na.omit(Bank_Marketing)
+```
+
+```{r}
+str(Bank_Marketing)
+```
+
+Calling all libraries to be used.
+
+```{r}
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(gplots)
+library(lattice)
+library(caret)
+library(ggplot2)
+library(ROCR)
+library(e1071)
+library(randomForest)
+library(class)
+library(knncat)
+library(mlbench)
+library(gbm)
+library(MLmetrics)
+```
+
+```{r}
+Probs_1 <- as.data.frame(prop.table(table(Bank_Marketing$subscription, Bank_Marketing$housing), 1))
+ggplot(Probs_1, aes(x = Var1, y = Freq, fill = Var2)) + geom_bar(stat = "identity", position = "fill", color = "black") + theme_bw() +
+ scale_fill_brewer(palette = "Dark2") + labs(x = "Subscription", y = "Housing", fill = "Housing", title = "Relationship between Subscription and Housing")
+
+#From the barplot constructed below, we can conclude that customers who subscribed to the term deposit had lower chances of having housing loans.
+```
+
+```{r}
+Probs_2 <- as.data.frame(prop.table(table(Bank_Marketing$subscription, Bank_Marketing$job), 1))
+ggplot(Probs_2, aes(x = Var2, y = Freq, fill = Var1)) + geom_bar(stat = "identity", color = "black") + theme_bw() +
+ scale_fill_brewer(palette = "Dark2") +  labs(x = "Job type", y = "Subscription", fill = "Subscription", title = "Relationship between Subscription and Type of Job")
+
+#From the barplot constructed, we can say that  customers who are retired, self-employed, students or are unemployed have higher subscription levels than average, whereas customers in fields of business, services and tech have almost equal likelihoods of subscription and non-subscription.
+```
+
+```{r}
+Probs_3 <- as.data.frame(prop.table(table(Bank_Marketing$subscription, Bank_Marketing$education), 1))
+ggplot(Probs_3, aes(x = Var2, y = Freq, fill = Var1)) + geom_bar(stat = "identity", position = "fill", color = "black") + theme_bw() +
+ scale_fill_brewer(palette = "Dark2") +  labs(x = "Education level", y = "Subscription", fill = "Subscription", title = "Relationship between Subscription and Level of Education")
+
+#From the barplot constructed, we can conclude that with the increase in the level of education the chances of subscribing to term deposit increases.
+```
+
+```{r}
+ggplot(Bank_Marketing, aes(x = age, y = balance)) + geom_point(color = "Dark Green") + labs(x = "Age", y = "Balance", title = "Relationship between Age and Balance") + ylim(0,40000) 
+
+#The scatterplot shows that from 30 to 50 years old people on average have higher account balance compared to others.
+```
+
+```{r}
+ggplot(Bank_Marketing, aes(x = subscription, y = age)) + geom_boxplot(color = "dark green") + labs(x = "Subscription", y = "Age of a customer", title = "Subscription to the Campaign Based on the Age of a Customer" )
+
+#The boxplot shows that on average the age of a person doesn't matter for subscription. The medians are almost the same for both groups of people. However, for the people who subscribed the range of age is somewhat larger. There are many outliers in the group who did not subscribe.
+```
+
+```{r}
+ggplot(Bank_Marketing, aes(x = subscription, y = duration)) + geom_boxplot(color = "dark green") + labs(x = "Subscription", y = "Duration of a call", title = "Subscription to the Promotion and Duration of a Phone Call")
+
+#According to the boxplot people who subscribed to the promotion had a longer conversation with the promoter on average. The range of the length of conversations is also larger for the people who subscribed.  There are, however, many outliers for both groups of people.
+
+```
+
+Creating training dataset containing 75% of the observations from Bank_Marketing dataset and testing dataset containing 25% of the remaining observations from Bank_Marketing dataset.
+
+```{r}
+set.seed(1)
+Index <- createDataPartition(Bank_Marketing$subscription, p = 0.75, list = F)
+Train <- Bank_Marketing[Index,]
+Test <- Bank_Marketing[-Index,]
+```
+
+
+LOGISTIC REGRESSION:
+Creating a model using Logistic regression.
+
+```{r}
+model_log1 <- glm(subscription~., data = Train, family = binomial)
+summary(model_log1)
+```
+
+Analyzing the exponents and coefficients of the model.
+
+```{r}
+coef(model_log1)
+#marital:  The log-odds of subscription to the campaign increases  1.387177e-01 times for married people and 2.388781e-01 times for single people compared to divorced people.
+
+#default-for the people who have previously defaulted on a loan log-odds of subscription decrease -2.554734e+00 times.
+
+#We only interpreted the two of the coefficients since those are very small values, in addition to that log-odds usually do not make much sense for the people and are not easy to understand.
+```
+
+```{r}
+exp(coef(model_log1))
+#age: With each year of people getting older the odds of their subscription decreases by 0.01%
+
+#job:The likelihood ofsubscription is 21% higher for retired people, 29% higher for the students and 60% higher for the unemployed compared to business-employed people. While it is lower by 14% for self-employed, by 14% for service workers and lower by 6% for technicians compared to business-employed people.
+
+#marital: The odds of subscription to the promotion is 14% higher for married people and 26.9% higher for singles compared to the divorced people.
+
+#education: As the level of education increases the likelihood of a person subscribing also increases.  Thus people with secondary education are 22% more likely to subscribe, and those with teritary education are 44.9% more likely to subscribe than the people with primary education.
+
+#default:  People that have previously defaulted on their loans are on average 92.3% less likely to subscribe than those who haven't defaulted.
+
+#housing: People that have a mortgage are 62% less likely to subscribe to the promotion than the ones who don't have one.
+
+#loan: People that have a loan are 43% less likely to subscribe to the promotion than the ones who don't have any loans.
+
+#contact: People contacted through telephone rather than cellular phone are 15% less likely to subscribe.
+
+#months: The odds of subscription, compared to the spring months, are 155% higher for the calls made in summer months, 2% higher in the winter and 44% higher in the fall.
+
+#duration: The odds of subscription increase by 0.3% with every additional second of length of the conversations.  However, this variable highly affects the dependent variable, as the conversation legth of 0 seconds will obviously mean failure to subscribe.
+
+#campaign: As the number of times a person was contacted increases the odds of the person's subscription decrease by 11%.
+
+#pdays: The longer is the period between the two contacts of a client, the likelihood of subscription increases by 0.09%
+
+#previous: The people that are contacted more ar more likely to subscribe.  Thus every additional contact increases the odds of subscription by 0.8%.
+
+#poutcome: If as a result of previous marketing campaign the outcome for a particular customer was "success" rather than a "failure" the odds of a person subscribing to this camaign increase by 816%, and if the outcome of the campaign was "other" rather than a "failure" the likelihood of subscription to this campaign increases by 23%.
+```
+
+
+Improving the model.
+
+```{r}
+model_log2 <- glm(subscription~.-(age+marital+previous+contact+balance), data = Train, family = binomial)
+summary(model_log2)
+
+#Since the variables age, previous, marital status, balance and contact are not significant when alpha = 0.05, we remove the variables to make the model better.
+```
+
+Constructing confusion matrix for the first logistic regression model.
+
+```{r}
+pr_log1 <- predict(model_log1, newdata = Test, type = "response")
+pr_log1_class <- factor(ifelse(pr_log1 > 0.5, "yes", "no"))
+confusion_log1 <- caret::confusionMatrix(pr_log1_class, Test$subscription, positive = "yes")
+confusion_log1
+```
+
+Constructing confusion matrix for the second logistic regression model.
+
+```{r}
+pr_log2 <- predict(model_log2, newdata = Test, type = "response")
+pr_log2_class <- factor(ifelse(pr_log2 > 0.5, "yes", "no"))
+confusion_log2 <- caret::confusionMatrix(pr_log2_class, Test$subscription, positive = "yes")
+confusion_log2
+```
+
+Interpretation of confusion matrices
+
+```{r}
+#Accuracy of the first model is 0.8296, and of the second one is 0.8281, both are more than no information rate of 0.7724. However, the first one is performing slightly better.
+#Sensitivity of the first model is 0.5135 which means that 51% of people that would subscribe were truly predicted to do so.  The sensitivity of the second one is 0.5157.  The figures aren't very different, however the second model is performing slighly better.  
+#Specificity of the first model is 0.9227 and means that 92% of people that didn't subscribe were correctly predicted not to subscribe, and for the second one was 0.9201.  So the first model is performing slightly better.  
+#PPV: 66.18% of people that were predicted to subscribe to the plan, actually subscribed according to the first model, and 65.53% according to the second model.
+#NPV: 86.56% of people that were predicted not to subscribe, actually didn't sunscribe according to the first model and 86.58% according to the second one.
+#On most of the indicaters of accuracy the first model is performing slightly better than the second.
+```
+
+Making ROC curves and calculating the area under the curve.
+
+```{r}
+ptestlog1 <- prediction(pr_log1, Test$subscription)
+performancelog1 <- performance(ptestlog1, "tpr", "fpr")
+plot(performancelog1, colorize = TRUE)
+auclog1 <- performance(ptestlog1, "auc")@y.values
+auclog1
+ptestlog2 <- prediction(pr_log2, Test$subscription)
+performancelog2 <- performance(ptestlog2, "tpr", "fpr")
+plot(performancelog2, colorize = TRUE)
+auclog2 <- performance(ptestlog2, "auc")@y.values
+auclog2
+
+#The AUC for the first model is 0.8754 and for the second model it is 0.8741. Both models have quite good accuracy measures.  However, the first one is performing slightly better than the second one.    
+```
+
+
+
+DECISION TREE
+Building and plotting a model using Decision Tree.
+
+```{r}
+Decision_model1 <- rpart(subscription~., data = Bank_Marketing)
+prp(Decision_model1, type = 2, extra = 1, main = "Number of Cases")
+prp(Decision_model1, type = 2, extra = 4, main = "Probabilites per Class")
+asRules(Decision_model1)
+
+#Rule number 7: The terminal node covers 14% of the data, includes 1080 cases, and with probability of 75% the predicted class is yes.
+#Rule number 6: The terminal node covers 4% of the data, includes 333 cases, and with probability of 69% the predicted class is no.
+#Rule number 2: The terminal node covers 82% of the data, includes 6429 cases, and with probability of 86% the predicted class is no.
+```
+
+Calculations of gini index and entropy for terminal nodes.
+
+```{r}
+gini1 <- 1 - ((5557/(5557 + 872))^2 + (872/(5557 + 872))^2)
+#Gini index shows the impurity of the terminal node. Whilst 0.5 Gini is a sign of maximum impurity, Gini equal to 0 shows homogeniousness. Getting a gini index of 0.23 is not a very favourable measure.
+
+entropy1 <- -(((5557/(5557 + 872))*log2(5557/(5557 + 872))) + ((872/(5557 + 872))*log2(872/(5557 + 872))))
+#When reffering to entropy as a measure of impurity, 0 is the most favourable measure and our result of 0.57 shows a high level of impurity in the terminal node. 
+
+gini2 <- 1 - ((229/(229 + 104))^2 + (104/(229 + 104))^2)
+# A gini index of 0.43 is an indicator that the terminal node is almost perfectly binary, being close to the maximum level of impurity.
+
+entropy2 <- -(((229/(229 + 104))*log2(229/(229 + 104))) + ((104/(229 + 104))*log2(104/(229 + 104))))
+#An entropy of 0.9 shows a very high level of impurity within the terminal node.
+
+gini3 <- 1 - ((270/(270 + 810))^2 + (810/(270 + 810))^2)
+#Gini index measuring 0.375 shows a high level of impurity within the terminal node.
+
+entropy3 <- -(((270/(270 + 810))*log2(270/(270 + 810))) + ((810/(270 + 810))*log2(810/(270 + 810))))
+#0.81 Entropy  shows that the terminal node is very impure.
+```
+
+Building a model using the Train.
+
+```{r}
+set.seed(1)
+decision_model2 <- rpart(subscription ~., data = Train)
+prp(decision_model2, type = 2, extra = 4, main = "Probabilites per Class" )
+prp(decision_model2, type = 2, extra = 1, main = "Number of Cases")
+asRules(decision_model2)
+#Rule number 7: The terminal node covers 14% of the data, includes 804 cases, and with probability of 76% the predicted class is yes.
+#Rule number 11: The terminal node covers 1% of the data, includes 75 cases, and with probability of 68% the predicted class is yes.
+#Rule number 6: The terminal node covers 4% of the data, includes 251 cases, and with probabililty of 68% the predicted class is no,
+#Rule number 10: The terminal node covers 12% of the data, includes 699 cases, and with the probability of 64% the predicted class is no.
+#Rule number 4: The terminal node covers 69% of the data, includes 4053 cases, and with the probability of 92% the predicted class is no.
+```
+
+Building a confusion matrix for the decision tree model.
+
+```{r}
+dt_pred_class <- predict(decision_model2, Test, type = "class")
+confusionMatrix(dt_pred_class, Test$subscription, positive = "yes")
+
+#Based on the level of accuracy we can say that the model based on the Decision tree does fairly well since the accuracy is 83.67%. Furthermore, the p-value is very small, indicating that compared to a model based on the information rate our model does a lot better.
+
+#Sensitivity ratio is 47%, which means that given that the customer subscribed for the term deposit, the model correctly predicted only 47% of the cases.
+
+#Specificity ratio is 94%, which means that given that the customer didn't subscribe for the term deposit, the model made correct predictions for 94% of the cases.
+
+#The positive predictive value is 71%, which means that out of all the times that the model predicted the customer to subscribe for the term deposit, it was correct in 71% of the cases.
+
+#The Negative predictive value is 86%, which means that out of all the times that the model predicted for the customer to NOT subscribe to the term deposit it was correct in 86% of the cases.
+
+#To sum up the model under decision tree is doing fairly well.
+```
+
+Making an ROC curve and calculating the area under the curve.
+
+```{r}
+dt_pred_prob <- predict(decision_model2, Test)
+dt_P_Test <- prediction(dt_pred_prob[,2], Test$subscription)
+dt_perf <- performance(dt_P_Test, "tpr", "fpr")
+plot(dt_perf)
+performance(dt_P_Test, "auc")@y.values
+
+#The ROC curve shows the trade-off between specificity and sensitivity for different cut off values. The area under the curve measures discrimination which is the ability of the test to correctly classify those who will and will not subscribe for term deposit .In the case of the model that was built on the decision tree, based on the area under the curve that's equal to 0.78 it can be concluded that the model is pretty accurate and makes reliable predictions.
+```
+
+CART
+
+```{r}
+library(rpart)
+library(rpart.plot)
+cart_model <- rpart(subscription~., data = Train)
+rpart.plot(cart_model, type = 3, digits = 3, fallen.leaves = TRUE)
+pred <- predict(cart_model, Test)
+cart_pred <- predict(cart_model, Test, type = "class")
+confusionMatrix(cart_pred, Test$subscription, positive = "yes")
+
+
+#Accuracy of the model is 0.8367 which is more than no information rate of 0.7724.
+#Sensitivity of the model is 0.4731 which means that 47% of people that would subscribe were truly predicted to do so. 
+#Specificity of the model is 0.9439 and means that 94% of people that didn't subscribe were correctly predicted not to subscribe.
+#PPV: 71.28% of people that were predicted to subscribe to the plan, actually subscribed.
+#NPV: 85.88% of people that were predicted not to subscribe, actually didn't subscribe.
+```
+
+```{r}
+cart_prob <- predict(cart_model, Test)
+cart_P_Test <- prediction(cart_prob[,2], Test$subscription)
+cart_perf <- performance(cart_P_Test, "tpr", "fpr")
+plot(cart_perf, colorize = TRUE)
+performance(cart_P_Test, "auc")@y.values
+#The AUC is 0.7821 which indicated that the model is quite good.
+```
+
+RANDOM FOREST
+Building a model using the Random Forest to check the out-of-the-bag errors for different number of trees and checking variable importance.
+
+```{r}
+set.seed(1)
+RF_model1 <- randomForest(subscription~., data = Train, ntree = 50, do.trace = TRUE)
+varImpPlot(RF_model1)
+
+#In the case of only one tree given the general out-of-the-bad error is equal to 19.7%, for class "no" it is 13.11% and for class "yes" it is 41.94%.
+#In the case of using 50 trees, the general out of the bad error would decrease to 15.93%, for class no it would be reduced to 7.82% and 43.43% for class "yes". This shows that on average by using more trees the overall out of the bag errors would decrease.
+
+#The Plot shows the average decrease in accuracy when any of the variables doesn't take part into node split compared to when it takes part. From the plot we can see that the biggest reduction in accuracy would be the removal of the variable "duration".
+
+```
+
+Constructing a confusion matrix using the Random Forest model.
+
+```{r}
+RF_predict <- predict(RF_model1, newdata = Test, type = "prob")
+RF_prediction_class <- predict(RF_model1, newdata = Test)
+confusionMatrix(RF_prediction_class, Test$subscription, positive = "yes")
+
+#Based on the overall level of accuracy we can say that the model based on the random forest does well due to havinf accuracy equal to 85%. Furthermore, the small p-value indicates that the accuracy of the model exceeds the no-information rate accuracy. 
+#Sensitivity ratio is 56%, which means that given that the customer subscribed for the term deposit, in 56 % of the cases the model did correct predictions.
+#Specificity ratio is 92%, which means that given that the customer didn't subscribe for the term deposit, the model made correct predictions for only 92% of the cases.
+#The positive predictive value is 69%, which means that out of all the times that the model predicted the customer to subscribe for the term deposit, it was correct in 69% of the cases.
+#The Negative predictive value is 88%, which means that out of all the times that the model predicted for the customer to NOT subscribe to the term deposit it was correct only in 88% of the cases.
+#To sum up the model under random forest is doing fairly well.
+```
+
+
+Constructing an ROC curve and calculating the AUC.
+
+```{r}
+RF_P_Test <- prediction(RF_predict[,2], Test$subscription)
+RF_perf <- performance(RF_P_Test, "tpr", "fpr")
+plot(RF_perf, colorize = TRUE)
+performance(RF_P_Test, "auc")@y.values
+
+#Having an AUC as high as 0.9 is an indicator of a good and reliable model.
+```
+
+Doing a grid search for finding the most optimal number of variables to be randomly chosen to participate in each split.
+
+```{r}
+set.seed(1) 
+RF_train_cntrl <- trainControl(method = "cv", number = 10)
+mtry_grid <- expand.grid(mtry = c(4, 7, 9, 10, 13, 15, 17))
+RF_Train <- Train[sample(nrow(Train), 5000),]
+RF_model2 <- train(subscription~., data = RF_Train,
+                   trControl = RF_train_cntrl,
+                   method = "rf",
+                   ntree = 25,
+                   tuneGrid = mtry_grid)
+set.seed(1)
+RF_model2$results
+RF_model2$bestTune
+
+#Based on the model consturcted, the optimal number of variables that are randomly chosen from the data to participate in each split to maximize accuracy is 9.
+```
+
+Consturcting an ROC curve and finding the AUC.
+
+```{r}
+RF_predict_2 <- predict(RF_model2, newdata = Test, type = "prob")
+RF_P_Test_2 <- prediction(RF_predict[,2], Test$subscription)
+RF_perf_2 <- performance(RF_P_Test_2, "tpr", "fpr")
+plot(RF_perf_2, colorize = TRUE)
+performance(RF_P_Test_2, "auc")@y.values
+
+#The area under the curve is 90% showing a reliable model and good performance.
+```
+
+Training the model and calculating the ROCR.
+
+```{r}
+set.seed(1)
+trc <- trainControl(method = "cv",
+                    classProbs = TRUE,
+                    summaryFunction = twoClassSummary,
+                    number = 5)
+set.seed(1)             
+RF_model3 <- train(subscription~., data = RF_Train,
+            trControl = trc,
+            method = "rf",
+            ntree = 50,
+            metric = "ROC",
+            tuneGrid = mtry_grid)
+plot(RF_model3)
+varImpPlot(RF_model3$finalModel)
+
+#By training the model and calculating the ROCR measures, on the final model it's evident that in fact if the variable "duration" will be removed the mean decrease in gini will be the most significant comparing with other variables.
+```
+
+
+NAIVE BAYES
+
+Building a model using Naive Bayes Classifier.
+
+```{r}
+Naive_model <- naiveBayes(subscription~., data = Train, laplace = 1)
+Naive_model$tables
+
+#Interpretations of some tables
+
+#Age table
+#The average age of clients who didn't subscribe for a term deposit is 40,3 and the standard deviation for the age of those clients is 10.3 .
+#The avergae age of subscriped clients is 42,1 and the standard deviation for age of those clients is 13.8 . 
+
+#Job table
+#P(Business/No) = 0.372 -Given that a client didn't subscibe for the term deposit, the probability of being a business employee is 0.372.
+#P(Services/No) = 0.095 -Given that a client didn't subscibe for the term deposit, the probability of being a service employee is 0.095.
+#P(Student/No) = 0.023 -Given that a client didn't subscibe for the term deposit, the probability of being a student is 0.023.
+#P(Technician/No) = 0.17 -Given that a client didn't subscibe for the term deposit, the probability of being a technician is 0.17.
+#P(Unemployed/No) = 0.02 -Given that a client didn't subscibe for the term deposit, the probability of being an unemployed is 0.02.
+#P(Business/Yes) = 0.411 -Given that a client did subscibe for the term deposit, the probability of being a business employee is 0.411.
+#P(Services/Yes) = 0.064 -Given that a client did subscibe for the term deposit, the probability of being a service employee is 0.064.
+#P(Student/Yes) = 0.059 -Given that a client did subscibe for the term deposit, the probability of being a student is 0.059.
+#P(Technician/Yes) = 0.155 -Given that a client did subscibe for the term deposit, the probability of being a technician is 0.155.
+#P(Unemployed/Yes) = 0.049 -Given that a client did subscibe for the term deposit, the probability of being an unemployed is 0.049.
+
+#Credit Default table
+#P(No def/Not sub) = 0.99 -Given that a client didn't subscibe for the term deposit, the probability of him/her having no credit default is 0.99.
+#P(Def/Not sub) = 0.0086 -Given that a client didn't subscibe for the term deposit, the probability of him/her having a credit default is 0.0086.
+#P(No def/Sub) = 0.998 -Given that a client did subscibe for the term deposit, the probability of him/her having no credit default is 0.998.
+#P(No def/Sub) = 0.0015 -Given that a client did subscibe for the term deposit, the probability of him/her having a credit default is 0.0015.
+
+#AvgYearlyBbalance table: average yearly balance
+#Average yearly balance of clients who didnt subscribe for the term deposit is 1386 and the standard devaition of their yearly balances is 2553 euro.
+#Average yearly balance of clients who did subscribe for the term deposit is 1921 euro and the standard devaition of their yearly balance is 3282 euro.
+
+#We can see from ROC curves the trade off between sensitivity and specificity, saying that in the raise of sensitivity, specificity is falling.
+
+#Area under the curve for the model under naive bayes is 0.83, which means that this model is doing better than a random model does. Thus we can conclude that the model under naive bayes is good one and mostly does right predictions.
+
+
+```
+
+Making Confusion Matrix under Naive Bayes Classifier.
+
+```{r}
+Naive_predict <- predict(Naive_model, newdata = Test)
+confusionMatrix(Naive_predict, Test$subscription, positive = "yes")
+
+#For the prediction model P-value [Acc > NIR] is about 0.027, so the model is performing better  comparing accuracy with no information rate.
+#Based on the overall Accuracy rate, the model is doing well, as 79% of predictions matches with the real values.
+#Sensitivity ratio is 65%, which means that in the case of predicting subscribed for the deposit given that a client actually subscribes, the model could predict only 65% of them.
+#Specificity ratio is 83%, which shows that from all unsubscibed clients, the model predicts only 83% of them.
+#Positive Predicted Values is equal to 53%. From all predictions about clients subscribing to the term deposit, 53% was predicted right.
+#Negative Predicted Values is 88% and this shows that from all predictions about clients not subscribing for bank's product, 88% matches with real outcomes (that a client actually doesnt subscribe).  
+#To sum up, the model is performing pretty well, as its ratios are not so low.
+```
+
+Making ROC Curve and calculating AUC.
+
+```{r}
+Naive_probability <- predict(Naive_model, newdata = Test, type = "raw")
+Naive_prediction <- prediction(Naive_probability[,2], Test$subscription )
+Naive_performance <- performance(Naive_prediction, "tpr", "fpr")
+plot(Naive_performance, colorize = TRUE)
+performance(Naive_prediction, "auc")@y.values
+
+#We can see from ROC curves the trade off between sensitivity and specificity, saying that in the raise of sensitivity, specificity is falling.
+
+#Area under the curve for the model under naive bayes is 0.83, which means that this model is doing better than a random model does. Thus we can conclude that the model under naive bayes is good one and can do right predictions.
+```
+
+KNN(USING KNNCAT)
+
+
+```{r}
+set.seed(1)
+ctrl <- trainControl(method = "cv", number = 10)
+knn_c <- train(subscription~., data = Train, method = "knn",
+               trControl = ctrl, preProcess = c("center", "scale"), tuneLength = 10)
+knn_c$results
+plot(knn_c)
+
+#The best value for k is 15, as its accuracy is the highest. 
+
+set.seed(1)
+knn_15 <- knncat(Train[-17,], Test[-17,], k = 15, classcol = 5)
+knn_15
+
+#The test misclass rate is 0.87% for k=15 and classcol=5.  This is a fairly good accuracy rate indicator.  
+```
+
+FIT NEUTRAL NETWORKS:
+
+Building a model using the Fit Neural Networks:
+```{r}
+TrainingParameters <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+set.seed(1)
+NNModel <- train(Train[,-17], Train$subscription,
+                  method = "nnet",
+                  trControl = TrainingParameters,
+                  preProcess = c("scale","center"),
+                  na.action = na.omit)
+plot(NNModel)
+
+#The plot constructed bellow shows the accuracy levels using repeated cross validations in case of different numbers of hidden units, which are the  number of neurons for each hidden layer for different weights. Based on the plot, we can say that the highhest level of accuracies are attained by having 3 hidden variables.
+```
+
+
+Creating a confusion matrix:
+```{r}
+NNPredictions <- predict(NNModel, Test)
+confusionMatrix(NNPredictions, Test$subscription, positive = "yes")
+#Based on the confusion matrix constructed we can conclude that the model under the Fit Neural Networks is pretty realiable, Due to having 83% accuracy and a very low p-value.
+#The sensitivity is 54% which means that given that the customer subscribed to the term depost, the model did correct predictions 54% of the time.
+#Specificity is 92%, meaning that given that the customer didn't subscirbe the model made correct predictions on 92% of the time
+#The Positive predicitive value shows that out of all the times that the model predicted for a customer to subscribe, the customer actually subscribed on 68% of the time.
+#The Negative predicitive value shows that out of all the times that the model predicted for a customer to not subscribe, the customer actually didn't subscrib on 87% of the time.
+#To sum up, the model is does reliable predictions due to high accuracy and not very low sensitivity, specificity, PPV and NPV.
+
+```
+
+
+GRADIENT BOOSTING MACHINE (GBM)
+Fixing Data for GBM
+```{r}
+Bank_Marketing$subscription <- as.numeric(Bank_Marketing$subscription)
+Bank_Marketing <- transform(Bank_Marketing, subscription=subscription-1)
+head(Bank_Marketing)
+str(Bank_Marketing$subscription)
+```
+
+
+```{r}
+set.seed(1)
+gbm.model <- gbm(subscription~., data= Bank_Marketing, shrinkage = 0.01, distribution = 'bernoulli', cv.folds = 5, n.trees = 10000, verbose = F )
+```
+
+Chossing the Best Iteration Number
+```{r}
+best.iter <- gbm.perf(gbm.model, method = "cv")
+best.iter
+
+#The best interation number is 5856.
+```
+
+Table and Plot of Variable Importance.
+```{r}
+summary(gbm.model)
+#Summary of the model results, with the importance plot of predictors.
+#The most important variable for predicting Subscription is Duration, then Poutcome and etc.
+#And the least important is Marital and Default variables.
+
+#The same results are shown in the Relative Influence graph.
+```
+
+
+Plotting the Partial Dependence Plots
+```{r}
+plot.gbm(gbm.model, 2, best.iter)
+
+#This plot shows the relationship between the dependent variable - subscription and one independent variable- job. Students and Unemployed have relatively high proption of subscriptions. 
+```
+
+```{r}
+plot.gbm(gbm.model, 4 , best.iter)
+
+#The graph shows that people with tertiary education degree have much more deposits compared to other people.
+```
+
+```{r}
+plot.gbm(gbm.model, 6, best.iter)
+
+#People with higher balance are subscribing more to a term deposit than people with less balance account.
+```
+
+```{r}
+plot.gbm(gbm.model, 7, best.iter)
+
+#People who have a mortgage are less likely to subscribe.
+```
+
+```{r}
+set.seed(1)
+fitControl <- trainControl(method = "cv", number = 5, returnResamp = "all")
+
+Bank_Marketing$subscription <- as.factor(Bank_Marketing$subscription)
+gbm_model2 <- train(subscription~., data = Bank_Marketing, method = "gbm", distribution = "bernoulli", trControl = fitControl, verbose = F,
+                tuneGrid = data.frame(.n.trees = best.iter, .shrinkage = 0.01, .interaction.depth = 1, .n.minobsinnode=1))
+
+gbm_model2
+confusionMatrix(gbm_model2)
+
+#model2 is generated with the optimal number of interation 5856. The shrinkage parameter lambda 0.01, the interecation depth is 1, which is the total number of splits. 
+#By using 5-fold cross validation, the accuracy of the model equals to 85%.
+
+```
+
+```{r}
+gbm_Pred <- predict(gbm_model2, Bank_Marketing, na.action = na.pass)
+postResample(gbm_Pred, Bank_Marketing$subscription)
+confusionMatrix(gbm_Pred, Bank_Marketing$subscription, positive = "1")
+
+#Based on the overall Accuracy rate, the model is doing well, as 85.97% of predictions matches with the real values. Furthermore, the P-value is significantly small, so the model is performing better comparing accuracy with no information rate.
+
+#Sensitivity ratio shows that given that the customer did subscribe, in 58% of the cases the model correctly predicted that he/she would subscribe.
+
+#The specificity of 93% shows that given that the customer didnt subscribe to the term deposit, the model did correct prediction in 93% of the cases.
+
+#The Positive Predicted Value of 74.10% shows that out of all times that the model predicted the customer to subscribe for the term deposit it was correct in 74.10% of the cases.
+
+#The Negative Predictive Value of 88.47% shows that out of all the times that the model predicted customer not to suscribe, it was correct in 88.47% of the time.
+```
+
+```{r}
+mResults <- predict(gbm_model2, Bank_Marketing, na.action = na.pass, type = "prob")
+mResults$obs <- Bank_Marketing$subscription
+mResults[1:10,]
+
+#The table shows the probability of being subscribed for the term deposit or not and the real data observation. 
+```
+
+```{r}
+mnLogLoss(mResults, lev = levels(mResults$obs))
+
+#Log-loss is done for comparing models. Still 0.31 is not so high, it means that model does better predictions. 
+```
+
+```{r}
+mResults$pred <- predict(gbm_model2, Bank_Marketing, na.action = na.pass)
+multiClassSummary(mResults, lev = levels(mResults$obs))
+
+#AUC - Area under the curve is 0.91, which is very good indicator.  Accuracy, Sensitivity, Specificity, PPV and NPV are interpreted above. 
+
+#To conlcude based on confusion matrix, AUC and LogLoss, the model under GBM is performing very well. This is because each next model which is generated is added so as to improve a bit from the previous model.
+```
+
+SUPPORT VECTOR MACHINE 
+```{r}
+svm_lin <- svm(subscription~., data = Train, kernel = "linear")
+pred_lin <- predict(svm_lin, Test)
+confusionMatrix(pred_lin, Test$subscription, positive="yes")
+#For one of the new classification algorithms we decided to experiment with Support Vector Machines.
+#Support Vector Machines is a supervised machine learning algorithm which can be used both for classification and regression problems. 
+#Support vectors are the the data points which lie close to the decision surface or hyperplane. 
+#These are the points which have weight on finding the hyperplane.
+#SVMs maximize the margin around the separating line.
+#For linearly separable data using the linear kernel is preferable to avoid complex computations and overfitting.
+#As we don't know much about our data trying the linear kernel first is a good practice.
+
+```
+
+
+```{r}
+svm_model <- svm(subscription~., data = Train)
+pred <- predict(svm_model, Test)
+confusionMatrix(pred, Test$subscription, positive="yes")
+#However,  SVM can capture more complex relationships by mapping the data into higher dimensional space.
+#After applying transformations there can be more obvious boundaries between classes and SVM can compute more optimal hyperplane.
+#The complex transformations and the resulting hyperplane, are however hard to interpret.
+#Here we use svm function from e1071 library with the default parameters, such as cost 1 and RBF kernel.
+#After predicting the test data, we can see the result with a confusion matrix.
+```
+ 
+```{r}
+svm_pol <- svm(subscription~., data = Train, kernel = "polynomial")
+pred_pol <- predict(svm_pol, Test)
+confusionMatrix(pred_pol, Test$subscription, positive="yes")
+#This so called kernel trick is a function which takes inputs the vectors in the original space and returns the dot product of the vectors in the feature.
+#It is computationally cheaper than the explicit computation of the coordinates.
+#Here we specify the polynomial kernel and construct the confusion matrix.
+```
+
+
+```{r}
+svm_sig <- svm(subscription~., data = Train, kernel = "sigmoid")
+pred_sig <- predict(svm_sig, Test)
+confusionMatrix(pred_sig, Test$subscription, positive="yes")
+#Here we use the sigmoid kernel which is similar to the sigmoid function from the logistic resgression.
+#There are no guarantees for one kernel to work better than the other so we try them all.
+```
+
+```{r}
+tune(svm, subscription~., data = Train, ranges=list(cost=10^(-1:2)))
+#The C parameter controls the tradeoff between smooth decision boundary and classifying the training points correctly.
+#Tuning can help avoid overfitiing and underfitting. We use K fold cross validation to find the best parameter.
+#SVM's complexity with the number of dimensions is linear while the complexity with number of observations is cubic. 
+#That is why it is mostly used with high-dimensional data with few observations and takes long to tune for our dataset.
+
+```
+
+
+```{r}
+svm_model <- svm(subscription~., data = Train, cost = 10)
+pred <- predict(svm_model, Test)
+confusionMatrix(pred, Test$subscription, positive="yes")
+#We can see our performance slightly increases comparatively to the previous ones.
+#The performance is higher than the No information rate.
+#For SVM to perform better some expertise in the domain can be useful for constructing meaningful kernels.
+#Also, SVMs perform poorly for imbalanced datasets when the class distribution is not uniform among classes which is clearly our case.
+```
+
+
+CONCCLUSION
+```{r}
+#We have made 9 different models to predict whether a person would subscribe to the bank's deposit promotion. Based on accuracy measures and P-values, the models Random Forest and GBM have the best performances both with 85% levels of accuracy and significantly low P-values. Based on sensitivity which shows the probability of model correctly predicting that a customer subscribed, the best performing model is the random forest with a sensitivity of 0.65. We think that sensitivity is more important for our prediction than specificity, because it is better to not miss a potential client, which would happen if sensitivity is lower, than not predict that a person would not subscribe and spend extra time on contacting him/her. Specificity ratio shows that given that the customer didn't subscribe for the term deposit, the model made correct predictions. Based on this, the best model is GBM with the specificity of 0.939 and the worst model is Naive Bayes with 0.8329. Based on Positive predictive values the best model is the decision tree model with rate of 0.71.  So 71% of people that were predicted to subscribe did actually subscribe. The Negative Predicted Value shows that from all predictions about clients not subscribing for bank's product, only 0.8893 matches the real outcomes (that a client actually doesn't subscribe) in case of Naive Bayes which is the best model in this case. Lastly, the highest AUC has GBM model which is 0.9102 and the worst one shows decision tree and CART with AUC of 0.7821. Although the model made with GBM had the highest accuracy, specificity and AUC and the lowest p-value, the random forest is the model with the best performance as it had almost identical results with GBM but higher sensitivity which we think is more important.
+```
+
+
+
